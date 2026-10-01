@@ -4,8 +4,10 @@
  *
  *   node tools/render.mjs stills 5,12.5,30 [outDir]   → PNG stills
  *   node tools/render.mjs events [out.json]           → picture-locked sound cues
- *   node tools/render.mjs video [out.mp4] [--fps 30] [--w 1920] [--from 0] [--to 60] [--audio score.wav]
+ *   node tools/render.mjs video [out.mp4] [--fps 30] [--w 1920] [--from 0] [--to DUR] [--audio score.wav]
  *                                                     → frames piped straight into ffmpeg
+ *
+ *   --film <dir>   which film to render (default: film/ — FADING; missyou/ — 想你了)
  *
  * Each frame is produced by FILM.renderAt(t) in headless Chromium (WebGL via SwiftShader),
  * so the export is frame-exact and independent of real-time performance.
@@ -27,13 +29,15 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const mode = args[0] || 'stills';
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
+const FILM_DIR = opt('film', 'film');
+const pos = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 
 async function openFilm(w, h) {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--allow-file-access-from-files', '--disable-accelerated-2d-canvas', '--disable-gpu-rasterization'] });
   const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
   page.on('console', (m) => { if (m.type() === 'error') console.error('[page]', m.text()); });
   page.on('pageerror', (e) => console.error('[page error]', e.message));
-  const url = pathToFileURL(path.join(ROOT, 'film', 'index.html')).href + `?capture=1&w=${w}&h=${h}`;
+  const url = pathToFileURL(path.join(ROOT, FILM_DIR, 'index.html')).href + `?capture=1&w=${w}&h=${h}`;
   await page.goto(url);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
   return { browser, page };
@@ -48,8 +52,8 @@ async function grab(page, t) {
 }
 
 async function stills() {
-  const times = (args[1] || '5,12,20,30,44,52,58').split(',').map(Number);
-  const out = args[2] || path.join(ROOT, 'stills');
+  const times = (pos[1] || '5,12,20,30,44,52,58').split(',').map(Number);
+  const out = pos[2] || path.join(ROOT, 'stills');
   fs.mkdirSync(out, { recursive: true });
   const { browser, page } = await openFilm(+opt('w', 1920), +opt('h', 1080));
   for (const t of times) {
@@ -62,7 +66,7 @@ async function stills() {
 }
 
 async function events() {
-  const out = args[1] || path.join(ROOT, 'build', 'events.json');
+  const out = pos[1] || path.join(ROOT, 'build', 'events.json');
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const { browser, page } = await openFilm(320, 180);
   const ev = await page.evaluate(() => window.FILM.events());
@@ -72,11 +76,13 @@ async function events() {
 }
 
 async function video() {
-  const out = args[1] && !args[1].startsWith('--') ? args[1] : path.join(ROOT, 'build', 'video.mp4');
+  const out = pos[1] || path.join(ROOT, 'build', 'video.mp4');
   const fps = +opt('fps', 30), w = +opt('w', 1920), h = Math.round(w * 9 / 16);
-  const from = +opt('from', 0), to = +opt('to', 60);
+  const from = +opt('from', 0);
   const workers = +opt('workers', Math.max(1, Math.min(4, os.cpus().length)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
+  const pages = await Promise.all(Array.from({ length: workers }, () => openFilm(w, h)));
+  const to = +opt('to', await pages[0].page.evaluate(() => window.FILM.DUR));
   const n0 = Math.round(from * fps), n1 = Math.round(to * fps);
   const total = n1 - n0;
   const audio = opt('audio', null);
@@ -88,7 +94,6 @@ async function video() {
   ffArgs.push('-movflags', '+faststart', out);
   const ff = spawn('ffmpeg', ffArgs, { stdio: ['pipe', 'inherit', 'inherit'] });
   // render in parallel workers, write in order
-  const pages = await Promise.all(Array.from({ length: workers }, () => openFilm(w, h)));
   const pending = new Map();
   let next = n0, written = n0;
   const started = Date.now();
