@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /*
- * Offline renderer for the film.
+ * Offline renderer for the films.
  *
  *   node tools/render.mjs stills 5,12.5,30 [outDir]   → PNG stills
  *   node tools/render.mjs events [out.json]           → picture-locked sound cues
- *   node tools/render.mjs video [out.mp4] [--fps 30] [--w 1920] [--from 0] [--to 60] [--audio score.wav]
+ *   node tools/render.mjs video [out.mp4] [--fps 30] [--w 1920] [--from 0] [--to <end>] [--audio score.wav]
  *                                                     → frames piped straight into ffmpeg
+ *
+ * --film <dir> picks the film (default: film, i.e. 褪色 · FADING; first-sight is 初见).
  *
  * Each frame is produced by FILM.renderAt(t) in headless Chromium (WebGL via SwiftShader),
  * so the export is frame-exact and independent of real-time performance.
@@ -27,13 +29,15 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const mode = args[0] || 'stills';
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
+const FILM_DIR = opt('film', 'film');
+const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 
 async function openFilm(w, h) {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--allow-file-access-from-files', '--disable-accelerated-2d-canvas', '--disable-gpu-rasterization'] });
   const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
   page.on('console', (m) => { if (m.type() === 'error') console.error('[page]', m.text()); });
   page.on('pageerror', (e) => console.error('[page error]', e.message));
-  const url = pathToFileURL(path.join(ROOT, 'film', 'index.html')).href + `?capture=1&w=${w}&h=${h}`;
+  const url = pathToFileURL(path.join(ROOT, FILM_DIR, 'index.html')).href + `?capture=1&w=${w}&h=${h}`;
   await page.goto(url);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
   return { browser, page };
@@ -48,8 +52,8 @@ async function grab(page, t) {
 }
 
 async function stills() {
-  const times = (args[1] || '5,12,20,30,44,52,58').split(',').map(Number);
-  const out = args[2] || path.join(ROOT, 'stills');
+  const times = (positional[1] || '5,12,20,30,44,52,58').split(',').map(Number);
+  const out = positional[2] || path.join(ROOT, 'stills');
   fs.mkdirSync(out, { recursive: true });
   const { browser, page } = await openFilm(+opt('w', 1920), +opt('h', 1080));
   for (const t of times) {
@@ -62,7 +66,7 @@ async function stills() {
 }
 
 async function events() {
-  const out = args[1] || path.join(ROOT, 'build', 'events.json');
+  const out = positional[1] || path.join(ROOT, 'build', 'events.json');
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const { browser, page } = await openFilm(320, 180);
   const ev = await page.evaluate(() => window.FILM.events());
@@ -72,9 +76,12 @@ async function events() {
 }
 
 async function video() {
-  const out = args[1] && !args[1].startsWith('--') ? args[1] : path.join(ROOT, 'build', 'video.mp4');
+  const out = positional[1] || path.join(ROOT, 'build', 'video.mp4');
   const fps = +opt('fps', 30), w = +opt('w', 1920), h = Math.round(w * 9 / 16);
-  const from = +opt('from', 0), to = +opt('to', 60);
+  const probe = await openFilm(320, 180);
+  const DUR = await probe.page.evaluate(() => window.FILM.DUR);
+  await probe.browser.close();
+  const from = +opt('from', 0), to = +opt('to', DUR);
   const workers = +opt('workers', Math.max(1, Math.min(4, os.cpus().length)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const n0 = Math.round(from * fps), n1 = Math.round(to * fps);
