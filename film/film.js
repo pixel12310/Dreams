@@ -1507,7 +1507,7 @@
     col = col*(1.-ov.a) + ov.rgb;
     float v = smoothstep(1.2, .3, length(cc*vec2(asp*.78,1.)));
     col *= mix(.7, 1., v);
-    float gr = h21(floor(gl_FragCoord.xy/1.5) + fract(uTime*13.17)*vec2(97.,57.)) - .5;
+    float gr = h21(floor(gl_FragCoord.xy/2.) + fract(uTime*13.17)*vec2(97.,57.)) - .5;
     col += gr*uGrain;
     col *= uEnd;
     outColor = vec4(clamp(col,0.,1.), 1.);
@@ -1548,7 +1548,7 @@
     gl.uniform1f(uni.uGroundY, gy);
     gl.uniform1f(uni.uCurtain, 1 - ss(4.3, 5.9, t));
     gl.uniform1f(uni.uEnd, 1 - ss(59.25, 60, t));
-    gl.uniform1f(uni.uGrain, 0.03 + 0.02 * (1 - (E.keepR + E.keepY + E.keepG + E.keepB) / 4));
+    gl.uniform1f(uni.uGrain, 0.016 + 0.012 * (1 - (E.keepR + E.keepY + E.keepG + E.keepB) / 4));
     gl.uniform1f(uni.uGrade, 1 - (E.keepR + E.keepY + E.keepG + E.keepB) / 4);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

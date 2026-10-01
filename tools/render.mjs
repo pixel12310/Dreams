@@ -82,7 +82,7 @@ async function video() {
   const audio = opt('audio', null);
   const ffArgs = ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-'];
   if (audio) ffArgs.push('-ss', String(from), '-t', String(to - from), '-i', audio);
-  ffArgs.push('-c:v', 'libx264', '-preset', 'slow', '-crf', opt('crf', '18'), '-tune', 'grain', '-pix_fmt', 'yuv420p',
+  ffArgs.push('-c:v', 'libx264', '-preset', 'slow', '-crf', opt('crf', '21'), '-tune', opt('tune', 'film'), '-pix_fmt', 'yuv420p',
     '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709');
   if (audio) ffArgs.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
   ffArgs.push('-movflags', '+faststart', out);
