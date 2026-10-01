@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>初见 · First Sight</title>
+<style>
+  :root { --bg: #0d0c0b; --fg: #f1ebdf; --dim: rgba(241, 235, 223, 0.55); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
+    font-family: "FSSerif", "Noto Serif SC", "Songti SC", serif; }
+  #stage { position: absolute; inset: 0; display: grid; place-items: center; }
+  canvas { display: block; background: #000; }
+  #start { position: absolute; inset: 0; display: grid; place-items: center; cursor: pointer;
+    background: radial-gradient(ellipse at center, rgba(24, 21, 18, 0.4), rgba(9, 8, 7, 0.94)); transition: opacity .9s ease; }
+  #start.hide { opacity: 0; pointer-events: none; }
+  #start .inner { text-align: center; user-select: none; }
+  #start h1 { font-family: "FSBrush", "FSSerif", serif; font-weight: 400; font-size: clamp(44px, 8vw, 96px); letter-spacing: .3em; margin: 0 0 .1em .3em; }
+  #start p { margin: 0 0 2.6em; color: var(--dim); letter-spacing: .32em; font-size: clamp(12px, 1.6vw, 16px); }
+  #start .play { display: inline-flex; align-items: center; gap: .8em; padding: .8em 1.8em; border: 1px solid rgba(241,235,223,.35);
+    border-radius: 999px; letter-spacing: .3em; font-size: 15px; transition: background .3s, border-color .3s; }
+  #start:hover .play { background: rgba(241,235,223,.08); border-color: rgba(241,235,223,.7); }
+  #start .play::before { content: ""; border-left: 11px solid var(--fg); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 22px; display: flex; align-items: center; gap: 14px;
+    background: linear-gradient(transparent, rgba(0,0,0,.55)); opacity: 0; transition: opacity .4s; font-size: 13px; color: var(--dim); }
+  body.ui #bar { opacity: 1; }
+  #bar button { all: unset; cursor: pointer; width: 28px; height: 28px; display: grid; place-items: center; color: var(--fg); }
+  #bar button:focus-visible { outline: 1px solid var(--fg); border-radius: 4px; }
+  #track { flex: 1; height: 3px; background: rgba(255,255,255,.18); border-radius: 2px; position: relative; cursor: pointer; }
+  #fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fg); border-radius: 2px; width: 0; }
+  #time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+  #err { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 16px; color: var(--dim); }
+  body.capture #start, body.capture #bar { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="film" aria-label="动画短片《初见》"></canvas></div>
+<div id="start" role="button" tabindex="0" aria-label="点击播放">
+  <div class="inner">
+    <h1>初见</h1>
+    <p>一个人的世界，是从什么时候开始褪色的？</p>
+    <span class="play">点击播放</span>
+  </div>
+</div>
+<div id="bar">
+  <button id="pp" aria-label="暂停">❚❚</button>
+  <div id="track"><div id="fill"></div></div>
+  <span id="time">0:00 / 1:35</span>
+</div>
+<div id="err">此浏览器不支持 WebGL2，无法播放实时版本。</div>
+<audio id="score" src="soundtrack.mp3" preload="auto"></audio>
+
+<script src="fonts.js"></script>
+<script src="js/core.js"></script>
+<script src="js/gfx.js"></script>
+<script src="js/brush.js"></script>
+<script src="js/glyphs.js"></script>
+<script src="js/figures.js"></script>
+<script src="js/world.js"></script>
+<script src="js/city.js"></script>
+<script src="js/final.js"></script>
+<script src="js/film.js"></script>
+<script>
+(async function () {
+  const q = new URLSearchParams(location.search);
+  const capture = q.has('capture');
+  const canvas = document.getElementById('film');
+  const audio = document.getElementById('score');
+
+  // fonts: Noto Serif SC for type, Ma Shan Zheng for the brush title
+  const FAM = { serif300: ['FSSerif', '300'], serif600: ['FSSerif', '600'], brush: ['FSBrush', '400'] };
+  if (window.FS_FONTS) {
+    for (const k of Object.keys(FS_FONTS)) {
+      const [fam, w] = FAM[k];
+      const f = new FontFace(fam, `url(${FS_FONTS[k]})`, { weight: w });
+      document.fonts.add(f);
+      try { await f.load(); } catch (e) {}
+    }
+  }
+  await document.fonts.ready;
+
+  if (capture) {
+    document.body.classList.add('capture');
+    FILM.init({ canvas, width: +(q.get('w') || 1920), height: +(q.get('h') || 1080) });
+    canvas.style.width = '100vw'; canvas.style.height = 'auto';
+    window.__ready = true;
+    return;
+  }
+
+  // live player
+  let size = fit();
+  try { FILM.init({ canvas, width: size.w, height: size.h }); }
+  catch (e) { document.getElementById('err').style.display = 'grid'; console.error(e); return; }
+
+  function fit() {
+    const vw = innerWidth, vh = innerHeight;
+    let w = vw, h = vw * 9 / 16;
+    if (h > vh) { h = vh; w = vh * 16 / 9; }
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const rw = Math.min(1920, Math.round(w * dpr));
+    return { w: rw, h: Math.round(rw * 9 / 16) };
+  }
+  addEventListener('resize', () => { size = fit(); FILM.resize(size.w, size.h); if (!playing) FILM.renderAt(clock()); });
+
+  let playing = false, t0 = 0, offset = q.has('t') ? +q.get('t') : 0, useAudio = true;
+  audio.addEventListener('error', () => { useAudio = false; });
+  const clock = () => {
+    if (!playing) return offset;
+    if (useAudio && !audio.paused && audio.readyState >= 2) return audio.currentTime;
+    return offset + (performance.now() - t0) / 1000;
+  };
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const fill = document.getElementById('fill'), time = document.getElementById('time'), pp = document.getElementById('pp');
+  time.textContent = `0:00 / ${fmt(FILM.DUR)}`;
+
+  function play() {
+    if (offset >= FILM.DUR - 0.05) offset = 0;
+    playing = true; t0 = performance.now();
+    if (useAudio) { audio.currentTime = offset; audio.play().catch(() => { useAudio = false; }); }
+    pp.textContent = '❚❚'; pp.setAttribute('aria-label', '暂停');
+  }
+  function pause() {
+    offset = clock(); playing = false; audio.pause();
+    pp.textContent = '▶'; pp.setAttribute('aria-label', '继续');
+  }
+  function seek(s) {
+    const was = playing; if (was) pause();
+    offset = Math.max(0, Math.min(FILM.DUR, s));
+    FILM.renderAt(offset);
+    if (was) play();
+  }
+
+  const start = document.getElementById('start');
+  const begin = () => { start.classList.add('hide'); play(); poke(); };
+  start.addEventListener('click', begin);
+  start.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(); } });
+  pp.addEventListener('click', () => (playing ? pause() : play()));
+  document.getElementById('track').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect(); seek((e.clientX - r.left) / r.width * FILM.DUR);
+  });
+  addEventListener('keydown', (e) => {
+    if (!start.classList.contains('hide')) return;
+    if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+    if (e.key === 'ArrowRight') seek(clock() + 5);
+    if (e.key === 'ArrowLeft') seek(clock() - 5);
+  });
+  let hideT;
+  function poke() { document.body.classList.add('ui'); clearTimeout(hideT); hideT = setTimeout(() => document.body.classList.remove('ui'), 1800); }
+  addEventListener('mousemove', poke); addEventListener('touchstart', poke);
+
+  FILM.renderAt(offset);
+  (function loop() {
+    if (playing) {
+      let t = clock();
+      if (t >= FILM.DUR) { t = FILM.DUR; offset = FILM.DUR; playing = false; audio.pause(); pp.textContent = '↺'; pp.setAttribute('aria-label', '重新播放'); poke(); }
+      FILM.renderAt(t);
+      fill.style.width = (t / FILM.DUR * 100) + '%';
+      time.textContent = `${fmt(t)} / ${fmt(FILM.DUR)}`;
+    }
+    requestAnimationFrame(loop);
+  })();
+})();
+</script>
+</body>
+</html>
