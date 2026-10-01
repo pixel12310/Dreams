@@ -11,7 +11,9 @@
 
 两部片子都没有用任何图片素材。画面每一帧都由代码实时绘制，配乐和音效也全部由程序合成。每部片子都可以直接在浏览器里实时播放，也可以用 [`tools/render.mjs`](tools/render.mjs) 逐帧导出成视频（`--film first-sight` 选择《初见》）。
 
-《初见》的完整说明见 [`first-sight/README.md`](first-sight/README.md)。
+[![初见 · FIRST SIGHT](first-sight/poster.jpg)](first-sight/first-sight_1080p.mp4)
+
+《初见》的成片在 [`first-sight/first-sight_1080p.mp4`](first-sight/first-sight_1080p.mp4)，完整说明见 [`first-sight/README.md`](first-sight/README.md)。
 
 ---
 

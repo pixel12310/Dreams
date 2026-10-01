@@ -7,6 +7,8 @@
 
 没有一张图片素材。宣纸、水彩、毛笔字、人物、配乐和音效，全部由代码逐帧生成。
 
+![初见 · 六个瞬间](poster.jpg)
+
 ---
 
 ## 片子给出的回答
@@ -109,5 +111,6 @@ first-sight/
   js/film.js          导演：时间线、调色、事件
   fonts.js            字体子集
   soundtrack.mp3      配乐（实时版使用）
+  poster.jpg          六个瞬间
   first-sight_1080p.mp4  成片
 ```
